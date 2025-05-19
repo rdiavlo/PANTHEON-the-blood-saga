@@ -46,6 +46,7 @@ class Battleship:
         self.bullets = Battleship.initialize()
 
         self.angle = 0
+        self._natural_deceleration = 0.00
         self._max_velocity_magnitude = 3
         self._velocity_magnitude = 0.6
         self._velocity_components = self.compute_velocity_components(self.angle, self._velocity_magnitude)
@@ -53,8 +54,8 @@ class Battleship:
 
     @staticmethod
     def compute_velocity_components(angle, velocity_magnitude):
-        x, y = (velocity_magnitude * math.cos(math.degrees(angle)),
-                velocity_magnitude * math.sin(math.degrees(angle)))
+        x, y = (velocity_magnitude * math.cos(math.radians(angle)),
+                velocity_magnitude * math.sin(math.radians(angle)))
         x, y = round(x, 2), round(y, 2)
         return [x, y]
 
@@ -86,7 +87,7 @@ class Battleship:
 
     def rotate_yourself(self, angle_to_rotate_by):
         new_angle = self.angle  + angle_to_rotate_by
-        new_angle = new_angle % 360
+        new_angle = round(new_angle % 360, 2)
         self.angle = new_angle
 
         # update velocity components to face the new angle. velocity magnitude remains the same
@@ -94,6 +95,9 @@ class Battleship:
 
 
     def move(self):
+        # slow down the player naturally
+        self.set_velocity(abs(self._velocity_magnitude) - self._natural_deceleration)
+
         x, y = tuple(self.position)
         dx, dy = tuple(self._velocity_components)
         self.position = [x + dx, y + dy]

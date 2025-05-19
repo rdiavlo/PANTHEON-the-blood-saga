@@ -8,5 +8,4 @@
 fastapi_x/*_gIgnore.*
 fastapi_x/todo
 selenium/
-pyspark/
 
