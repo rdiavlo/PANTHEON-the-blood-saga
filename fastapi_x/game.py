@@ -1,3 +1,4 @@
+import math
 import time
 import pygame
 
@@ -44,12 +45,59 @@ class Battleship:
         self.position = [40, 40]
         self.bullets = Battleship.initialize()
 
+        self.angle = 0
+        self._max_velocity_magnitude = 3
+        self._velocity_magnitude = 0.6
+        self._velocity_components = self.compute_velocity_components(self.angle, self._velocity_magnitude)
+
+
+    @staticmethod
+    def compute_velocity_components(angle, velocity_magnitude):
+        x, y = (velocity_magnitude * math.cos(math.degrees(angle)),
+                velocity_magnitude * math.sin(math.degrees(angle)))
+        x, y = round(x, 2), round(y, 2)
+        return [x, y]
+
+
+    def set_velocity(self, new_velocity):
+        if abs(new_velocity) <= self._max_velocity_magnitude:
+            self._velocity_magnitude = round(new_velocity, 2)
+
+            # when velocity_magnitude is updated, it should automatically update velocity components
+            x, y = self.compute_velocity_components(self.angle, new_velocity)
+            self._velocity_components = [x, y]
+
+    def get_velocity(self):
+        return self._velocity_magnitude
+
+    def get_velocity_components(self):
+        return self._velocity_components
+
+    def get_angle(self):
+        return self.angle
+
     @staticmethod
     def initialize():
         # give the battleship 10 bullets
         number_of_bullets = 10
         bullet_list = [Bullet() for _ in range(number_of_bullets)]
         return bullet_list
+
+
+    def rotate_yourself(self, angle_to_rotate_by):
+        new_angle = self.angle  + angle_to_rotate_by
+        new_angle = new_angle % 360
+        self.angle = new_angle
+
+        # update velocity components to face the new angle. velocity magnitude remains the same
+        self._velocity_components = self.compute_velocity_components(new_angle, self._velocity_magnitude)
+
+
+    def move(self):
+        x, y = tuple(self.position)
+        dx, dy = tuple(self._velocity_components)
+        self.position = [x + dx, y + dy]
+
 
     def shoot_bullet(self):
         # take a bullet out
@@ -61,8 +109,10 @@ class Battleship:
 
         return bullet_to_shoot
 
+
     def update(self):
-        pass
+        self.move()
+
 
     def __str__(self):
         return "battleship"
@@ -225,6 +275,8 @@ class WorldToPlayersInterface:
             # update the battleship position
             player_to_update.world_battleship.position = updated_player_data["battleship position"]
             player_to_update.color = updated_player_data["color"]
+            player_to_update.world_battleship.angle = updated_player_data["battleship_angle"]
+            player_to_update.world_battleship.set_velocity(updated_player_data["battleship_velocity_magnitude"])
             return 1
         return 0
 

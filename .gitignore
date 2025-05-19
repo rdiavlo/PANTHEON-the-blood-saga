@@ -1,0 +1,8 @@
+# Ignore selinium files
+selenium/
+
+fastapi_x/*_gIgnore.*
+fastapi_x/todo
+
+
+*.pyc
