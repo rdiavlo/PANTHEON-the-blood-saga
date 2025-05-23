@@ -72,7 +72,8 @@ def run_game_client(client_config_data, client_2_server_interface: Client2Server
                 self.time_handler = {"contact_server_interval": [time.time(), self.server_contact_interval],
                                      "battleship_rotate_interval": [time.time(), 0.1],
                                      "battleship_velocity_change_interval": [time.time(), 0.1],
-                                     "help_screen_display_interval": [time.time(), 0.4]
+                                     "help_screen_display_interval": [time.time(), 0.4],
+                                     "battleship_shoot_bullet": [time.time(), 0.3]
                                      }
 
             def check_for_time_constraint(self, event_key):
@@ -100,25 +101,31 @@ def run_game_client(client_config_data, client_2_server_interface: Client2Server
 
             elif key_pressed_dict_p[pygame.K_RIGHT]:
                 if time_handle.check_for_time_constraint("battleship_rotate_interval"):
-                    world_battleship.rotate_yourself(-angle_increment)
+                    world_battleship.rotate_yourself(angle_increment)
             elif key_pressed_dict_p[pygame.K_LEFT]:
                 if time_handle.check_for_time_constraint("battleship_rotate_interval"):
-                    world_battleship.rotate_yourself(angle_increment)
+                    world_battleship.rotate_yourself(-angle_increment)
 
             # battleship shoots bullet if space is pressed
             if key_pressed_dict_p[pygame.K_SPACE]:
-                world_battleship.shoot_bullet()
+                if time_handle.check_for_time_constraint("battleship_shoot_bullet"):
+                    world_battleship.shoot_bullet()
+                    path_val = f"shoot_bullet?player_name={client_name}"
+                    client_2_server_interface.post_request(path_val, {})
 
         pygame.init()
 
-        SCREEN_WIDTH, SCREEN_HEIGHT = (600, 400)
+        SCREEN_WIDTH, SCREEN_HEIGHT = (800, 600)
         screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption(f"{client_name} 🍍🍍🍍")
-        font = pygame.font.Font('freesansbold.ttf', 10)
+        font_10 = pygame.font.Font('freesansbold.ttf', 10)
+        font_15 = pygame.font.Font('freesansbold.ttf', 15)
 
 
         # game settings
         display_help_screen = False
+        check_if_i_am_killed = False
+        i_have_been_killed_at_time = None
 
         # create a time_handler
         time_handler = TimeHandler()
@@ -128,15 +135,17 @@ def run_game_client(client_config_data, client_2_server_interface: Client2Server
             help_screen_surface = pygame.surface.Surface((SCREEN_WIDTH * 0.6, SCREEN_HEIGHT * 0.6))
             help_screen_surface.fill("white")
 
-            help_text = ("welcome to the help menu:[n]"
+            help_text = ("help menu:[n]"
                          "press up/down keys to increase/decrease speed.[n]"
                          "press left/right keys to rotate battleship[n]")
             help_text_list = help_text.split("[n]")
             help_text_start_position = [10, 20]
-            offset = [0, 10]
+            offset = [0, 15]
             for index, line in enumerate(help_text_list):
-                f_obj = font.render(line, True, "black")
-
+                if index == 0:
+                    f_obj = font_15.render(line, True, "black")
+                else:
+                    f_obj = font_10.render(line, True, "black")
                 line_position = [help_text_start_position[0] + (index * offset[0]),
                                  help_text_start_position[1] + (index * offset[1])]
                 help_screen_surface.blit(f_obj, line_position)
@@ -189,44 +198,88 @@ def run_game_client(client_config_data, client_2_server_interface: Client2Server
                 # periodically request server for updated world data
                 path_val = f"get_world_data?player_name={client_name}"
                 world_data = client_2_server_interface.get_request(path_val).json()
-                # print("this is the opponent data pulled by server", world_data)
                 client_data_cache.world_data = world_data
 
 
-            # <-------- this starts the display section v-------->
-
-            # display opponents in the world
+            # from the data received by server check if I have been killed (possible collision)
             if client_data_cache.world_data is not None:
-                opponents_data = client_data_cache.world_data["opponent_player_data"]
-                for opponent_name, data_v in opponents_data.items():
-                    opp_player_name, opp_player_position, opp_player_color = (data_v["name"], data_v["battleship_position"],
-                                                                              data_v["color"])
-                    pygame.draw.circle(screen, opp_player_color, opp_player_position, 5)
-
-                    my_name = font.render(opp_player_name, True, "red")
-                    text_position = [opp_player_position[0] + 10, opp_player_position[1] - 20]
-                    screen.blit(my_name, text_position)
-
-            # display the player in the world
-            my_battleship_position = battleship_o.position
-            pygame.draw.circle(screen, player_color, my_battleship_position, 5)
-            my_name = font.render(client_name, True, "white")
-            text_position = [my_battleship_position[0] + 10, my_battleship_position[1] - 20]
-            screen.blit(my_name, text_position)
-
-            # display player velocity indicator
-            starting_node = my_battleship_position
-            scaling_factor = 20
-            velocity_vector = battleship_o.get_velocity_components()
-            velocity_vector_scaled = [i * scaling_factor for i in velocity_vector]
-            ending_node = [starting_node[0] + velocity_vector_scaled[0], starting_node[1] + velocity_vector_scaled[1]]
-            pygame.draw.line(screen, "white", starting_node, ending_node)
+                if not check_if_i_am_killed:
+                    my_data = client_data_cache.world_data["your_data"]
+                    check_if_i_am_killed = my_data["killed"]
+                    if check_if_i_am_killed:
+                        i_have_been_killed_at_time = time.time()
+                        print("You have been killed!")
 
 
-            # display help screen is enabled
-            if display_help_screen:
-                screen.blit(help_screen, [20, 20])
+            # <-------- this starts the display section v-------->
+            # display this when the player is alive
+            if not check_if_i_am_killed:
 
+
+                # display opponents in the world
+                if client_data_cache.world_data is not None:
+                    opponents_data = client_data_cache.world_data["opponent_player_data"]
+                    world_objects_data = client_data_cache.world_data["world_objects_data"]
+                    all_bullets = world_objects_data["bullets"]
+
+                    # display the opponent players and their relevant details
+                    for opponent_name, data_v in opponents_data.items():
+                        opp_player_name, opp_player_position, opp_player_color = (data_v["name"], data_v["battleship_position"],
+                                                                                  data_v["color"])
+                        pygame.draw.circle(screen, opp_player_color, opp_player_position, 5)
+
+
+                        # display opponent player name next to their battleship
+                        my_name = font_10.render(opp_player_name, True, "red")
+                        text_position = [opp_player_position[0] + 10, opp_player_position[1] - 20]
+                        screen.blit(my_name, text_position)
+
+                    # display the bullets
+                    for bullet_data in all_bullets:
+                        pygame.draw.circle(screen, "orange", bullet_data, 3)
+
+
+
+                # display the player in the world
+                my_battleship_position = battleship_o.position
+                pygame.draw.circle(screen, player_color, my_battleship_position, 5)
+
+                # draw the collision radius
+                pygame.draw.circle(screen, "red", my_battleship_position, 10, 1)
+
+                my_name = font_10.render(client_name, True, "white")
+                text_position = [my_battleship_position[0] + 10, my_battleship_position[1] - 20]
+                screen.blit(my_name, text_position)
+
+                # display player velocity indicator
+                starting_node = my_battleship_position
+                scaling_factor = 20
+                velocity_vector = battleship_o.get_velocity_components()
+                velocity_vector_scaled = [i * scaling_factor for i in velocity_vector]
+                ending_node = [starting_node[0] + velocity_vector_scaled[0], starting_node[1] + velocity_vector_scaled[1]]
+                pygame.draw.line(screen, "white", starting_node, ending_node)
+
+                # display bullet count
+                count_of_bullets_left = len(battleship_o.bullets)
+                start_position = [SCREEN_WIDTH * 0.9, SCREEN_HEIGHT * 0.08]
+                for bullet_index in range(count_of_bullets_left):
+                    new_position = [start_position[0], start_position[1] + (20 * bullet_index)]
+                    pygame.draw.rect(screen, "orange", [new_position[0], new_position[1], 20, 10])
+
+
+                # display help screen is enabled
+                if display_help_screen:
+                    screen.blit(help_screen, [20, 20])
+
+            # display this after player is killed
+            else:
+                my_name = font_15.render("you have been killed!".upper(), True, "red")
+                text_position = [SCREEN_WIDTH / 2 - 80, SCREEN_HEIGHT / 2 - 20]
+                screen.blit(my_name, text_position)
+
+                # if 10 seconds have elapsed exit the game
+                if time.time() - i_have_been_killed_at_time >= 8:
+                    break
 
             pygame.display.flip()
             screen.fill("black")
